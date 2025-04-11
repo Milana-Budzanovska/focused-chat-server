@@ -1,53 +1,63 @@
-const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
-const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
+const PORT = process.env.PORT || 3000;
 
-const app = express();
-app.use(cors());
-
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const server = new WebSocket.Server({ port: PORT }, () => {
+  console.log('✅ Server started on port', PORT);
+});
 
 let messages = [];
 
-wss.on('connection', (ws) => {
-  console.log('🔌 Нове зʼєднання');
+server.on('connection', (ws) => {
+  console.log('🟢 New connection');
 
-  // Надіслати історію
+  // Відправити поточну історію
   ws.send(JSON.stringify({ type: 'history', messages }));
 
-  // Обробка вхідних повідомлень
-  ws.on('message', (data) => {
+  ws.on('message', (message) => {
     try {
-      const parsed = JSON.parse(data);
-      if (parsed.type === 'new-message') {
-        const msg = {
-          id: Date.now(),
-          text: parsed.text,
-          nickname: parsed.nickname || 'Анонім',
-          avatar: parsed.avatar || '🌱',
+      const data = JSON.parse(message);
+
+      if (data.type === 'new-message') {
+        const newMsg = {
+          id: uuidv4(),
+          text: data.text,
+          nickname: data.nickname,
+          avatar: data.avatar,
           reaction: null,
+          timestamp: new Date().toISOString(),
         };
-        messages.push(msg);
-        // Трансляція всім
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'new-message', message: msg }));
-          }
-        });
+        messages.push(newMsg);
+        broadcast({ type: 'new-message', message: newMsg });
       }
+
+      if (data.type === 'reaction') {
+        messages = messages.map((m) =>
+          m.id === data.id ? { ...m, reaction: data.reaction } : m
+        );
+        broadcast({ type: 'update-reaction', id: data.id, reaction: data.reaction });
+      }
+
+      if (data.type === 'delete-message') {
+        messages = messages.filter((m) => m.id !== data.id);
+        broadcast({ type: 'delete-message', id: data.id });
+      }
+
+      if (data.type === 'clear-history') {
+        messages = [];
+        broadcast({ type: 'clear-history' });
+      }
+
     } catch (err) {
-      console.error('❌ Помилка повідомлення:', err);
+      console.error('❌ Error parsing message:', err);
     }
   });
 });
 
-app.get('/', (req, res) => {
-  res.send('🧠 Focused Chat Server працює!');
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Сервер запущено на порту ${PORT}`);
-});
+function broadcast(data) {
+  server.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(data));
+    }
+  });
+}
