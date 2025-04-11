@@ -1,16 +1,14 @@
 {
   "name": "focused-community-server",
   "version": "1.0.0",
-  "description": "WebSocket сервер для FocusEd Community",
+  "description": "WebSocket сервер для FocusEd",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "type": "module",
   "dependencies": {
-    "ws": "^8.13.0"
-  },
-  "engines": {
-    "node": ">=16.0.0"
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ws": "^8.12.0"
   }
 }
