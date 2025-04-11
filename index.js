@@ -1,52 +1,66 @@
 const WebSocket = require('ws');
-const server = new WebSocket.Server({ port: 4000 });
+const fs = require('fs');
+const path = require('path');
 
+const PORT = process.env.PORT || 4000;
+const server = new WebSocket.Server({ port: PORT });
+const DB_PATH = path.join(__dirname, 'db.json');
+
+// Завантаження повідомлень з файлу
 let messages = [];
+try {
+  if (fs.existsSync(DB_PATH)) {
+    messages = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+  } else {
+    fs.writeFileSync(DB_PATH, JSON.stringify([]));
+  }
+} catch (err) {
+  console.error('❌ Помилка при читанні db.json:', err);
+}
+
+// Функція збереження в файл
+const saveMessages = () => {
+  fs.writeFileSync(DB_PATH, JSON.stringify(messages, null, 2));
+};
 
 server.on('connection', ws => {
-  console.log("👤 Користувач підключився");
+  console.log("🟢 Користувач підключився");
 
-  // Надсилаємо попередні повідомлення новому клієнту
+  // Надсилаємо всю історію
   ws.send(JSON.stringify({ type: 'history', messages }));
 
-  // Прийом повідомлення
   ws.on('message', message => {
     try {
       const data = JSON.parse(message);
+
       if (data.type === 'new-message') {
         const msg = {
           id: Date.now(),
           text: data.text,
           nickname: data.nickname || 'Анонім',
           avatar: data.avatar || '🧠',
-          reaction: null
+          reaction: null,
         };
+
         messages.push(msg);
-        // Розсилаємо всім клієнтам
+        saveMessages();
+
+        // Розсилка всім клієнтам
         server.clients.forEach(client => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ type: 'new-message', message: msg }));
           }
         });
       }
-      if (data.type === 'reaction') {
-        const msg = messages.find(m => m.id === data.id);
-        if (msg) {
-          msg.reaction = data.reaction;
-          server.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({ type: 'update-reaction', id: msg.id, reaction: msg.reaction }));
-            }
-          });
-        }
-      }
+
     } catch (err) {
-      console.error("❌ Помилка обробки повідомлення:", err);
+      console.error("❌ Невірний формат JSON:", err);
     }
   });
 
   ws.on('close', () => {
-    console.log("🚪 Користувач вийшов");
+    console.log("🔴 Користувач відключився");
   });
 });
-console.log("🚀 WebSocket сервер запущено на порту 4000");
+
+console.log(`✅ WebSocket сервер запущено на порту ${PORT}`);
